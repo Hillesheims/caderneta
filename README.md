@@ -70,6 +70,9 @@ Para uso pessoal, a instalação pelo Chrome já resolve.
     busca a cotação da B3 (atraso de até 15 min) e mostra o resultado e o lucro realizado nas vendas.
   - **Renda fixa (caixinhas):** registre aportes e resgates e informe quanto do CDI a caixinha rende.
     O saldo é estimado com o CDI diário oficial do Banco Central (série SGS 12), antes do imposto de renda.
+    Se não bater com o banco, toque na caixinha → **Conferir com o banco** e digite o saldo que aparece
+    no app do banco: o Caderneta parte desse valor e soma o CDI dali pra frente. O rendimento total
+    do app inclui o que já saiu junto com os resgates, por isso costuma ficar acima do rendimento que o banco mostra.
 - **Metas:** meta de gastos do mês (vale para todos os meses) e metas por categoria, com barra de
   progresso e quanto ainda dá para gastar por dia.
 - **Fixos:** aluguel, assinaturas e outras contas que se repetem. Todo dia 1º os fixos ativos entram

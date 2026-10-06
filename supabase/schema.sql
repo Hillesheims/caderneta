@@ -71,9 +71,15 @@ create table if not exists public.caixinhas (
   user_id        uuid not null default auth.uid() references auth.users (id) on delete cascade,
   nome           text not null check (char_length(nome) between 1 and 60),
   percentual_cdi numeric(7, 2) not null default 100 check (percentual_cdi > 0 and percentual_cdi <= 1000),
+  saldo_conferido_centavos bigint check (saldo_conferido_centavos is null or saldo_conferido_centavos >= 0),
+  saldo_conferido_em       date,
   criado_em      timestamptz not null default now(),
   atualizado_em  timestamptz not null default now()
 );
+-- saldo conferido com o banco (para bancos criados antes dessas colunas existirem)
+alter table public.caixinhas add column if not exists saldo_conferido_centavos bigint
+  check (saldo_conferido_centavos is null or saldo_conferido_centavos >= 0);
+alter table public.caixinhas add column if not exists saldo_conferido_em date;
 create index if not exists caixinhas_user_idx on public.caixinhas (user_id);
 
 create table if not exists public.caixinha_movs (

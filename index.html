@@ -362,8 +362,10 @@
     <div class="fields">
       <label class="field full"><span class="label">Nome</span><input id="cNome" maxlength="60" placeholder="Ex.: Reserva de emergência" autocomplete="off"></label>
       <label class="field full"><span class="label">Rende quanto do CDI (%)</span><input id="cPct" inputmode="decimal" autocomplete="off" placeholder="100"></label>
+      <label class="field"><span class="label">Saldo no banco</span><input id="cSaldo" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>
+      <label class="field"><span class="label">Data do saldo</span><input id="cSaldoEm" type="date"></label>
     </div>
-    <p class="hint form-note">A maioria das caixinhas de banco digital rende 100% do CDI. O saldo é estimado com o CDI diário oficial do Banco Central, antes do imposto de renda.</p>
+    <p class="hint form-note" id="cNota">O saldo no banco é opcional. Sem ele, o app estima pelo CDI diário do Banco Central, antes do imposto de renda. Preenchendo, ele parte desse valor e soma o CDI daqui pra frente.</p>
     <div class="err" id="cErr" role="alert"></div>
     <div class="sheet-f">
       <div class="del-zone" data-del="cx"></div>

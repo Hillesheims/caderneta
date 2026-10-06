@@ -18,12 +18,12 @@
     lancamentos: "id,tipo,valor_centavos,descricao,categoria,conta,data,fixo_id,criado_em,atualizado_em",
     gastos_fixos: "id,descricao,valor_centavos,categoria,conta,dia,ativo,ultimo_mes_lancado,criado_em,atualizado_em",
     acoes_ops: "id,ticker,tipo,quantidade,preco,taxas_centavos,data,criado_em,atualizado_em",
-    caixinhas: "id,nome,percentual_cdi,criado_em,atualizado_em",
+    caixinhas: "id,nome,percentual_cdi,saldo_conferido_centavos,saldo_conferido_em,criado_em,atualizado_em",
     caixinha_movs: "id,caixinha_id,tipo,valor_centavos,data,criado_em,atualizado_em"
   };
   const NUMERIC = {
     lancamentos: ["valor_centavos"], gastos_fixos: ["valor_centavos", "dia"],
-    acoes_ops: ["quantidade", "preco", "taxas_centavos"], caixinhas: ["percentual_cdi"], caixinha_movs: ["valor_centavos"]
+    acoes_ops: ["quantidade", "preco", "taxas_centavos"], caixinhas: ["percentual_cdi", "saldo_conferido_centavos"], caixinha_movs: ["valor_centavos"]
   };
 
   /* ================= utilidades ================= */
@@ -388,7 +388,7 @@
   async function atualizarMercado(force) {
     if (!sb || !state.user || state.mercado.carregando || !navigator.onLine) return;
     const tickers = calcPosicoes().filter(p => p.qtd > 0).map(p => p.ticker);
-    const datas = state.data.caixinha_movs.map(m => m.data).sort();
+    const datas = [...state.data.caixinha_movs.map(m => m.data), ...state.data.caixinhas.map(c => c.saldo_conferido_em).filter(Boolean)].sort();
     const cdiDesde = datas[0] || null;
     const agora = Date.now(), M = state.mercado;
     const precisaCot = tickers.length > 0 && (force || !M.cotacoesEm || agora - M.cotacoesEm > 5 * 60_000 || tickers.some(t => !M.cotacoes[t] && !M.erros[t]));
@@ -455,28 +455,41 @@
     }).sort((a, b) => (b.valor ?? b.custo) - (a.valor ?? a.custo));
   }
 
-  // Saldo bruto estimado: cada dia útil rende (CDI do dia × % do CDI), a partir do dia seguinte ao aporte.
-  function calcCaixinhas() {
+  // Simula o saldo dia a dia: cada dia útil rende (CDI do dia × % do CDI), a partir do dia seguinte ao movimento.
+  // Se houver saldo conferido com o banco, ele substitui a estimativa naquela data e a conta segue dali.
+  function simularCaixinha(cx, movs, meses) {
     const cdi = state.mercado.cdi || [];
+    const fator = (cx.percentual_cdi || 100) / 100;
+    const ancora = cx.saldo_conferido_em && cx.saldo_conferido_centavos != null
+      ? { data: cx.saldo_conferido_em, valor: Number(cx.saldo_conferido_centavos) } : null;
+    const semHistorico = ancora && !movs.some(m => m.data <= ancora.data);
+    const inicio = [movs[0] && movs[0].data, ancora && ancora.data].filter(Boolean).sort()[0];
+    const usaCdi = !!inicio && cdi.length > 0 && !!state.mercado.cdiDesde && state.mercado.cdiDesde <= inicio;
+    let saldo = 0, aport = 0, j = 0, d = 0, anc = false;
+    const aplicar = m => { const v = m.tipo === "aporte" ? m.valor_centavos : -m.valor_centavos; saldo = Math.max(0, saldo + v); aport += v; };
+    const ancorar = () => { saldo = ancora.valor; if (semHistorico) aport += ancora.valor; anc = true; };
+    const ate = limite => { // aplica tudo com data anterior ao limite
+      while (j < movs.length && movs[j].data < limite) {
+        if (ancora && !anc && movs[j].data > ancora.data) ancorar();
+        aplicar(movs[j++]);
+      }
+      if (ancora && !anc && ancora.data < limite) ancorar();
+    };
+    const rende = limite => { // dias de CDI até o limite (inclusive)
+      if (!usaCdi) return;
+      while (d < cdi.length && cdi[d].data <= limite) { ate(cdi[d].data); saldo *= 1 + (cdi[d].taxa / 100) * fator; d++; }
+    };
+    const porMes = [];
+    if (meses) for (const m of meses) { const fim = `${m}-${pad(daysInMonth(m))}`; rende(fim); ate(`${fim}~`); porMes.push({ saldo, aport }); }
+    rende("9999-12-31"); ate("9999-12-31~");
+    return { saldo, aportado: aport, porMes, estimado: usaCdi, conferido: ancora, semHistorico: !!semHistorico };
+  }
+
+  function calcCaixinhas() {
     return state.data.caixinhas.map(cx => {
       const movs = state.data.caixinha_movs.filter(m => m.caixinha_id === cx.id).sort(byDateAsc);
-      let aportado = 0;
-      for (const m of movs) aportado += m.tipo === "aporte" ? m.valor_centavos : -m.valor_centavos;
-      const temCdi = cdi.length > 0 && movs.length > 0 && !!state.mercado.cdiDesde && state.mercado.cdiDesde <= movs[0].data;
-      let saldo = 0;
-      const aplicar = m => { saldo += m.tipo === "aporte" ? m.valor_centavos : -m.valor_centavos; if (saldo < 0) saldo = 0; };
-      if (temCdi) {
-        const fator = (cx.percentual_cdi || 100) / 100;
-        let j = 0;
-        for (const d of cdi) {
-          while (j < movs.length && movs[j].data < d.data) aplicar(movs[j++]);
-          saldo *= 1 + (d.taxa / 100) * fator;
-        }
-        while (j < movs.length) aplicar(movs[j++]);
-      } else {
-        saldo = Math.max(0, aportado);
-      }
-      return { cx, movs, aportado, saldo, rendimento: saldo - aportado, estimado: temCdi };
+      const s = simularCaixinha(cx, movs);
+      return { cx, movs, aportado: s.aportado, saldo: s.saldo, rendimento: s.saldo - s.aportado, estimado: s.estimado || !!s.conferido, conferido: s.conferido, semHistorico: s.semHistorico };
     }).sort((a, b) => b.saldo - a.saldo);
   }
   function cdiAnual() {
@@ -649,29 +662,14 @@
       acoes.push(v); custo.push(c);
     }
 
-    const cdi = state.mercado.cdi || [];
     const rf = meses.map(() => 0), aportRf = meses.map(() => 0);
     let rfSemCdi = false;
     for (const cx of state.data.caixinhas) {
       const movs = state.data.caixinha_movs.filter(m => m.caixinha_id === cx.id).sort(byDateAsc);
-      if (!movs.length) continue;
-      const fator = (cx.percentual_cdi || 100) / 100;
-      const usaCdi = cdi.length > 0 && !!state.mercado.cdiDesde && state.mercado.cdiDesde <= movs[0].data;
-      if (!usaCdi) rfSemCdi = true;
-      let saldo = 0, aport = 0, k = 0, d = 0;
-      const aplicar = mv => { const val = mv.tipo === "aporte" ? mv.valor_centavos : -mv.valor_centavos; saldo = Math.max(0, saldo + val); aport += val; };
-      meses.forEach((m, i) => {
-        const fim = fimDoMes(m);
-        if (usaCdi) {
-          while (d < cdi.length && cdi[d].data <= fim) {
-            while (k < movs.length && movs[k].data < cdi[d].data) aplicar(movs[k++]);
-            saldo *= 1 + (cdi[d].taxa / 100) * fator;
-            d++;
-          }
-        }
-        while (k < movs.length && movs[k].data <= fim) aplicar(movs[k++]);
-        rf[i] += saldo; aportRf[i] += aport;
-      });
+      if (!movs.length && !cx.saldo_conferido_em) continue;
+      const sim = simularCaixinha(cx, movs, meses);
+      if (!sim.estimado) rfSemCdi = true;
+      sim.porMes.forEach((p, i) => { rf[i] += p.saldo; aportRf[i] += p.aport; });
     }
     return { acoes, rf, aplicado: meses.map((_, i) => custo[i] + aportRf[i]), semPreco, rfSemCdi };
   }
@@ -718,7 +716,7 @@
     }).join("");
 
     /* ----- investimentos ----- */
-    const pos = calcPosicoes().filter(p => p.qtd > 0), cxs = calcCaixinhas().filter(c => c.movs.length);
+    const pos = calcPosicoes().filter(p => p.qtd > 0), cxs = calcCaixinhas().filter(c => c.movs.length || c.conferido);
     const tem = pos.length > 0 || cxs.length > 0;
     let aValor = 0, aCusto = 0;
     for (const p of pos) { aCusto += p.custo; aValor += p.valor != null ? p.valor : p.custo; }
@@ -1075,7 +1073,7 @@
         <button type="button" class="irow" data-cx="${esc(c.cx.id)}">
           <span class="badge">${esc(numIn(c.cx.percentual_cdi))}%<br>CDI</span>
           <span><span class="t1" style="display:block">${esc(c.cx.nome)}</span>
-          <span class="t2" style="display:block">aportou ${money(c.aportado)}</span></span>
+          <span class="t2" style="display:block">${c.conferido ? `conferido em ${esc(dateBR(c.conferido.data).slice(0, 5))}` : `aportou ${money(c.aportado)}`}</span></span>
           <span class="r"><span class="v num">${money(c.saldo)}</span><span class="s num ${signCls(c.rendimento)}">${c.estimado ? `${moneySigned(c.rendimento)}` : `<span class="chip-s">sem CDI</span>`}</span></span>
         </button>`).join("") + `</div>`;
     }
@@ -1297,27 +1295,51 @@
   }
 
   /* ---------- caixinha ---------- */
-  function openCx(cx) {
+  function openCx(cx, foco) {
     closeAll();
     state.edit.cx = cx || null;
-    $("cxTitle").textContent = cx ? "Editar caixinha" : "Nova caixinha";
+    // "Conferir com o banco": campo vazio e data de hoje, para não regravar sem querer o saldo antigo
+    const conferir = state.edit.cxConferir = !!cx && foco === "cSaldo";
+    $("cxTitle").textContent = conferir ? "Conferir com o banco" : cx ? "Editar caixinha" : "Nova caixinha";
     $("cNome").value = cx ? cx.nome : "";
     $("cPct").value = cx ? numIn(cx.percentual_cdi) : "100";
+    if (conferir) {
+      const atual = calcCaixinhas().find(c => c.cx.id === cx.id);
+      $("cSaldo").value = "";
+      $("cSaldoEm").value = todayISO();
+      $("cNota").textContent = `Digite o saldo que aparece agora no app do banco.${atual ? ` Hoje o Caderneta mostra ${money(atual.saldo)}.` : ""}`;
+    } else {
+      $("cSaldo").value = cx && cx.saldo_conferido_centavos != null ? centsIn(cx.saldo_conferido_centavos) : "";
+      $("cSaldoEm").value = cx && cx.saldo_conferido_em ? cx.saldo_conferido_em : todayISO();
+      $("cNota").textContent = "O saldo no banco é opcional. Sem ele, o app estima pelo CDI diário do Banco Central, antes do imposto de renda. Preenchendo, ele parte desse valor e soma o CDI daqui pra frente.";
+    }
     $("cErr").textContent = "";
-    resetDel("cx", !!cx);
-    openSheet("cxScrim", cx ? null : "cNome");
+    resetDel("cx", !!cx && !conferir);
+    openSheet("cxScrim", foco || (cx ? null : "cNome"));
   }
   function saveCx(ev) {
     ev.preventDefault();
     const nome = $("cNome").value.trim(), pctCdi = parseNum($("cPct").value), ed = state.edit.cx;
+    const saldoTxt = $("cSaldo").value.trim(), saldo = saldoTxt ? parseBRL(saldoTxt) : null, saldoEm = $("cSaldoEm").value;
     if (!nome) { $("cErr").textContent = "Dê um nome para a caixinha."; return; }
     if (!(pctCdi > 0 && pctCdi <= 1000)) { $("cErr").textContent = "Informe quanto do CDI ela rende, por exemplo 100."; return; }
+    if (state.edit.cxConferir && !saldoTxt) { $("cErr").textContent = "Digite o saldo que aparece no app do banco."; $("cSaldo").focus(); return; }
+    if (saldoTxt && !(saldo >= 0)) { $("cErr").textContent = "Digite o saldo como aparece no banco, por exemplo 5.396,14, ou deixe em branco."; return; }
+    if (saldoTxt && !/^\d{4}-\d{2}-\d{2}$/.test(saldoEm)) { $("cErr").textContent = "Informe a data do saldo do banco."; return; }
+    if (saldoTxt && saldoEm > todayISO()) { $("cErr").textContent = "A data do saldo não pode ser no futuro."; return; }
     const now = new Date().toISOString();
-    const row = { id: ed ? ed.id : uuid(), nome: nome.slice(0, 60), percentual_cdi: Math.round(pctCdi * 100) / 100, criado_em: ed ? ed.criado_em : now, atualizado_em: now };
+    const row = {
+      id: ed ? ed.id : uuid(), nome: nome.slice(0, 60), percentual_cdi: Math.round(pctCdi * 100) / 100,
+      saldo_conferido_centavos: saldoTxt ? saldo : null, saldo_conferido_em: saldoTxt ? saldoEm : null,
+      criado_em: ed ? ed.criado_em : now, atualizado_em: now
+    };
     closeAll();
     upsertLocal("caixinhas", row);
-    if (ed) { toast(salvo() || "Caixinha atualizada"); voltar(); }
+    const ancoraMudou = !!ed && (row.saldo_conferido_centavos !== (ed.saldo_conferido_centavos == null ? null : Number(ed.saldo_conferido_centavos)) || row.saldo_conferido_em !== (ed.saldo_conferido_em || null));
+    if (ed) { toast(salvo() || (saldoTxt && ancoraMudou ? `Saldo de ${money(saldo)} conferido em ${dateBR(saldoEm)}` : "Caixinha atualizada")); voltar(); }
+    else if (saldoTxt) { toast(salvo() || `Caixinha criada com saldo de ${money(saldo)}`); }
     else { toast(salvo() || "Caixinha criada. Agora registre o primeiro aporte."); openMov(null, { caixinha: row.id }); }
+    if (saldoTxt && (!state.mercado.cdiDesde || saldoEm < state.mercado.cdiDesde)) atualizarMercado(false);
   }
 
   /* ---------- aporte / resgate ---------- */
@@ -1437,12 +1459,12 @@
       const c = calcCaixinhas().find(x => x.cx.id === det.id);
       if (!c) { $("detScrim").hidden = true; state.det = null; return; }
       $("detTitle").textContent = c.cx.nome;
-      $("detSub").textContent = `Rende ${numIn(c.cx.percentual_cdi)}% do CDI`;
+      $("detSub").textContent = `Rende ${numIn(c.cx.percentual_cdi)}% do CDI${c.conferido ? ` · conferido com o banco em ${dateBR(c.conferido.data)}` : ""}`;
       const rent = c.aportado > 0 ? c.rendimento / c.aportado * 100 : null;
       const kv = [
-        ["Saldo estimado", money(c.saldo)],
-        ["Total aportado", money(c.aportado)],
-        ["Rendimento bruto", c.estimado ? `<span class="${signCls(c.rendimento)}">${moneySigned(c.rendimento)}</span>` : "—"],
+        [c.conferido ? "Saldo atual" : "Saldo estimado", money(c.saldo)],
+        c.semHistorico ? [`Saldo em ${dateBR(c.conferido.data)}`, money(c.conferido.valor)] : ["Aportes − resgates", money(c.aportado)],
+        [c.semHistorico ? `Rendimento desde ${dateBR(c.conferido.data).slice(0, 5)}` : "Rendimento total", c.estimado ? `<span class="${signCls(c.rendimento)}">${moneySigned(c.rendimento)}</span>` : "—"],
         ["Rentabilidade", c.estimado && rent != null ? pctSigned(rent) : "—"]
       ];
       let h = `<div class="kv">${kv.map(([k, v]) => `<div><span class="label">${k}</span><span class="v">${v}</span></div>`).join("")}</div>`;
@@ -1453,7 +1475,10 @@
           <span><span class="t1" style="display:block">${dateBR(m.data)}</span></span>
           <span class="r"><span class="v num ${m.tipo === "aporte" ? "pos" : "neg"}">${m.tipo === "aporte" ? "+" : "−"}${money(m.valor_centavos)}</span></span></button>`).join("") + `</div>`
         : `<div class="empty small">Nenhum movimento ainda.</div>`;
-      h += `<div class="det-actions"><button type="button" class="btn primary" data-act="aporte">Aporte</button><button type="button" class="btn" data-act="resgate">Resgate</button><button type="button" class="btn" data-act="editar-cx">Editar caixinha</button></div>`;
+      h += c.conferido
+        ? `<p class="hint" style="margin:0 0 10px">O app parte de ${money(c.conferido.valor)} (saldo do banco em ${dateBR(c.conferido.data).slice(0, 5)}) e soma o CDI e os movimentos novos.${c.semHistorico ? "" : " O rendimento total inclui o que já saiu nos resgates, por isso costuma ficar acima do rendimento que o banco mostra."}</p>`
+        : `<p class="hint" style="margin:0 0 10px">Saldo estimado pelo CDI, antes do imposto. Se não bater com o banco, toque em Conferir com o banco.</p>`;
+      h += `<div class="det-actions"><button type="button" class="btn primary" data-act="aporte">Aporte</button><button type="button" class="btn" data-act="resgate">Resgate</button><button type="button" class="btn" data-act="conferir-cx">Conferir com o banco</button><button type="button" class="btn" data-act="editar-cx">Editar caixinha</button></div>`;
       $("detBody").innerHTML = h;
     }
   }
@@ -1660,6 +1685,7 @@
     else if (act === "comprar" || act === "vender") { state.voltar = det; openOp(null, { ticker: det.ticker, tipo: act === "comprar" ? "compra" : "venda" }); }
     else if (act === "aporte" || act === "resgate") { state.voltar = det; openMov(null, { caixinha: det.id, tipo: act }); }
     else if (act === "editar-cx") { const c = state.data.caixinhas.find(x => x.id === det.id); if (c) { state.voltar = det; openCx(c); } }
+    else if (act === "conferir-cx") { const c = state.data.caixinhas.find(x => x.id === det.id); if (c) { state.voltar = det; openCx(c, "cSaldo"); } }
   });
 
   // Metas
