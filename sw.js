@@ -1,6 +1,6 @@
 // Service worker da Caderneta: guarda o app no aparelho para abrir sem internet.
 // Os dados (Supabase) nunca passam pelo cache: vão direto para a rede.
-const VERSION = "caderneta-dc4adddc48";
+const VERSION = "caderneta-e9a517102c";
 const SHELL = [
   "./index.html",
   "./app.css",

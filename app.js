@@ -51,6 +51,8 @@
   const monthLower = ym => monthName(ym, { month: "long" }).toLowerCase();
   const dayLabel = iso => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("pt-BR", { weekday: "short", day: "numeric", month: "short" }).replace(/\./g, ""); };
   const dateBR = iso => { const [y, m, d] = String(iso).split("-"); return `${d}/${m}/${y}`; };
+  // Mercado fracionário (ABEV3F) é a mesma ação em custódia (ABEV3): tudo entra no ticker normal.
+  const baseTicker = t => String(t || "").trim().toUpperCase().replace(/\.SA$/, "").replace(/^([A-Z]{4}\d{1,2})F$/, "$1");
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
   const byDateDesc = (a, b) => b.data.localeCompare(a.data) || (Date.parse(b.criado_em) || 0) - (Date.parse(a.criado_em) || 0);
@@ -157,7 +159,7 @@
     state.user = u;
     const d = store.get(K.data(u.id), null);
     state.data = emptyData();
-    if (d && typeof d === "object") { for (const t of TABLES) if (Array.isArray(d[t])) state.data[t] = d[t]; }
+    if (d && typeof d === "object") { for (const t of TABLES) if (Array.isArray(d[t])) state.data[t] = t === "acoes_ops" ? d[t].map(o => normRow(t, o)) : d[t]; }
     else state.data.lancamentos = store.get(K.rows(u.id), []);
     state.prefs = normPrefs(store.get(K.prefs(u.id), null));
     state.outbox = store.get(K.outbox(u.id), []).map(op => (op.kind !== "prefs" && !op.table ? { ...op, table: "lancamentos" } : op));
@@ -220,6 +222,7 @@
   function normRow(table, r) {
     const o = { ...r };
     for (const c of NUMERIC[table]) if (o[c] != null) o[c] = Number(o[c]);
+    if (table === "acoes_ops" && o.ticker) o.ticker = baseTicker(o.ticker);
     return o;
   }
   const prefsRow = p => ({
@@ -1265,12 +1268,12 @@
   function opTotal() {
     const q = parseNum($("oQtd").value), p = parseNum($("oPreco").value), tx = parseBRL($("oTaxas").value) || 0;
     const ok = q > 0 && p > 0;
-    $("opTotal").textContent = ok ? `Total da operação: ${money(q * p * 100 + (switchVal("opType") === "compra" ? tx : -tx))}${tx ? " (com taxas)" : ""}` : "Ações, FIIs e ETFs da B3. O preço médio é recalculado a cada compra.";
+    $("opTotal").textContent = ok ? `Total da operação: ${money(q * p * 100 + (switchVal("opType") === "compra" ? tx : -tx))}${tx ? " (com taxas)" : ""}` : "Ações, FIIs e ETFs da B3. O preço médio é recalculado a cada compra. Fracionário (ABEV3F) entra como ABEV3.";
   }
   function saveOp(ev) {
     ev.preventDefault();
     const tipo = switchVal("opType"), ed = state.edit.op;
-    const ticker = $("oTicker").value.trim().toUpperCase().replace(/\.SA$/, "");
+    const ticker = baseTicker($("oTicker").value);
     const q = parseNum($("oQtd").value), p = parseNum($("oPreco").value), data = $("oData").value;
     const taxasTxt = $("oTaxas").value.trim(), taxas = taxasTxt ? parseBRL(taxasTxt) : 0;
     const err = m => { $("oErr").textContent = m; };
