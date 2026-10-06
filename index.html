@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Caderneta</title>
+<meta name="description" content="Registro de finanças pessoais, sincronizado entre celular e computador.">
+<meta name="theme-color" content="#EEF2F0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E1513" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preload" href="fonts/figtree-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/bricolage-grotesque-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- Tela: falta configurar o Supabase -->
+<main id="screen-setup" class="auth" hidden>
+  <div class="auth-card">
+    <img src="icons/icon.svg" width="56" height="56" alt="">
+    <h1>Falta conectar o banco</h1>
+    <p>Abra o arquivo <code>config.js</code>, cole a URL do projeto e a chave publicável do seu Supabase e publique de novo.</p>
+    <p class="hint" id="setupDetail"></p>
+  </div>
+</main>
+
+<!-- Tela: login -->
+<main id="screen-login" class="auth" hidden>
+  <div class="auth-card">
+    <img src="icons/icon.svg" width="56" height="56" alt="">
+    <h1>Caderneta</h1>
+    <p class="muted">Suas finanças no celular e no computador, sempre sincronizadas.</p>
+    <form id="loginForm" class="auth-form" novalidate>
+      <label class="field"><span class="label">E-mail</span><input id="lEmail" type="email" autocomplete="username" inputmode="email" required></label>
+      <label class="field"><span class="label">Senha</span><input id="lPass" type="password" autocomplete="current-password" required></label>
+      <div class="err" id="lErr" role="alert"></div>
+      <button class="btn primary block" id="lBtn" type="submit">Entrar</button>
+    </form>
+    <p class="hint">Use o e-mail e a senha do usuário que você criou no painel do Supabase.</p>
+  </div>
+</main>
+
+<!-- Tela: app -->
+<div id="screen-app" hidden>
+  <div class="wrap">
+    <header class="top">
+      <div class="brand">
+        <img src="icons/icon.svg" width="30" height="30" alt="">
+        <h1>Caderneta</h1>
+      </div>
+      <div class="top-actions">
+        <button type="button" class="sync ok" id="sync" title="Sincronizar agora"><i aria-hidden="true"></i><span id="syncText">Sincronizado</span></button>
+        <button class="btn primary add-desk" id="btnAdd" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Novo lançamento
+        </button>
+        <button class="icon-btn" id="btnMenu" type="button" aria-label="Menu">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="install-banner" id="installBanner" hidden>
+      <span>Instale a Caderneta e abra direto da tela inicial, como qualquer app.</span>
+      <div class="install-actions">
+        <button class="btn" type="button" id="installLater">Agora não</button>
+        <button class="btn primary" type="button" id="installBtn">Instalar</button>
+      </div>
+    </div>
+
+    <nav class="month" aria-label="Mês">
+      <button type="button" id="prevM" aria-label="Mês anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg></button>
+      <button type="button" id="nextM" aria-label="Próximo mês"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>
+      <div class="m-label" id="mLabel"></div>
+      <button type="button" class="m-today" id="todayM" hidden>Mês atual</button>
+    </nav>
+
+    <section class="ledger" aria-label="Resumo do mês">
+      <div>
+        <span class="label">Saldo do mês</span>
+        <span class="big num" id="sumBal">R$ 0,00</span>
+        <span class="sub" id="sumHint">receitas menos despesas</span>
+      </div>
+      <div>
+        <span class="label">Receitas</span>
+        <span class="mid num pos" id="sumIn">R$ 0,00</span>
+        <span class="sub" id="sumInN">0 lançamentos</span>
+      </div>
+      <div>
+        <span class="label">Despesas</span>
+        <span class="mid num neg" id="sumOut">R$ 0,00</span>
+        <span class="sub" id="sumOutN">0 lançamentos</span>
+      </div>
+    </section>
+
+    <div class="grid">
+      <div class="col">
+        <section class="panel">
+          <div class="panel-head"><h2>Para onde foi o dinheiro</h2><span class="label num" id="catTotal"></span></div>
+          <div class="cats" id="cats"></div>
+        </section>
+        <section class="panel trend">
+          <div class="panel-head"><h2>Últimos 6 meses</h2></div>
+          <div id="trend"></div>
+          <div class="legend"><span><b class="lg-in"></b>Receitas</span><span><b class="lg-out"></b>Despesas</span></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>Movimento por conta</h2></div>
+          <div class="accts" id="accts"></div>
+        </section>
+      </div>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Lançamentos</h2>
+          <div class="seg" role="group" aria-label="Filtrar por tipo">
+            <button type="button" data-f="todos" aria-pressed="true">Todos</button>
+            <button type="button" data-f="receita" aria-pressed="false">Receitas</button>
+            <button type="button" data-f="despesa" aria-pressed="false">Despesas</button>
+          </div>
+        </div>
+        <input class="search" id="q" type="search" placeholder="Buscar por descrição ou categoria" aria-label="Buscar lançamentos" autocomplete="off">
+        <div id="list"></div>
+      </section>
+    </div>
+  </div>
+
+  <button class="fab" id="fab" type="button" aria-label="Novo lançamento"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+</div>
+
+<!-- Folha: lançamento -->
+<div class="scrim" id="txScrim" hidden>
+  <form class="sheet" id="txForm" novalidate role="dialog" aria-modal="true" aria-labelledby="txTitle">
+    <div class="sheet-h">
+      <h2 id="txTitle">Novo lançamento</h2>
+      <button type="button" class="x" data-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="typeswitch" role="group" aria-label="Tipo">
+      <button type="button" data-t="despesa" aria-pressed="true">Despesa</button>
+      <button type="button" data-t="receita" aria-pressed="false">Receita</button>
+    </div>
+    <label class="amount"><span>R$</span><input id="fAmount" inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Valor"></label>
+    <div class="fields">
+      <label class="field full"><span class="label">Descrição</span><input id="fDesc" maxlength="80" placeholder="Ex.: Mercado do mês" autocomplete="off"></label>
+      <label class="field"><span class="label">Categoria</span><select id="fCat"></select></label>
+      <label class="field"><span class="label">Conta / meio</span><select id="fAcct"></select></label>
+      <label class="field full"><span class="label">Data</span><input id="fDate" type="date"></label>
+    </div>
+    <div class="err" id="fErr" role="alert"></div>
+    <div class="sheet-f">
+      <div id="delZone"></div>
+      <div class="right">
+        <button type="button" class="btn" data-close>Cancelar</button>
+        <button type="submit" class="btn primary" id="fSave">Salvar</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Folha: menu -->
+<div class="scrim" id="menuScrim" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="menuTitle">
+    <div class="sheet-h">
+      <h2 id="menuTitle">Menu</h2>
+      <button type="button" class="x" data-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="menu">
+      <button type="button" id="miCats">Categorias e contas</button>
+      <button type="button" id="miCsv">Exportar o mês em CSV (Excel)</button>
+      <button type="button" id="miInstall" hidden>Instalar o app neste aparelho</button>
+      <button type="button" id="miSync">Sincronizar agora</button>
+      <button type="button" id="miLogout" class="danger-text">Sair da conta</button>
+    </div>
+    <div id="logoutZone"></div>
+    <p class="menu-foot" id="menuFoot"></p>
+  </div>
+</div>
+
+<!-- Folha: categorias e contas -->
+<div class="scrim" id="catScrim" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="catTitle">
+    <div class="sheet-h">
+      <h2 id="catTitle">Categorias e contas</h2>
+      <button type="button" class="x" data-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div id="catEditor"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden role="status"></div>
+<div class="update-bar" id="updateBar" hidden>Nova versão do app disponível. <button type="button" class="btn primary" id="updateBtn">Atualizar</button></div>
+
+<script src="config.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
