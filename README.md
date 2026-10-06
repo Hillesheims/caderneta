@@ -56,6 +56,13 @@ Para uso pessoal, a instalação pelo Chrome já resolve.
 
 ## Abas do app
 
+- **Painel** (tela inicial): visão dos últimos 3, 6 ou 12 meses.
+  - Gastos: gasto médio por mês (comparado com o período anterior), quanto sobrou da renda,
+    peso dos gastos fixos, maior categoria, gráfico de receitas e despesas e cada categoria
+    com um minigráfico mês a mês e a meta.
+  - Investimentos: patrimônio, resultado, aportes no período, quanto da renda foi investido,
+    evolução do patrimônio no fim de cada mês (ações pelo fechamento do mês, caixinhas pelo CDI)
+    e onde está o dinheiro. Todo gráfico tem a opção "Ver tabela".
 - **Mês:** saldo, receitas, despesas, gastos por categoria, últimos 6 meses e a lista de lançamentos.
 - **Investimentos**
   - **Ações:** registre compras e vendas (ticker, quantidade, preço, data e taxas). O app calcula o

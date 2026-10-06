@@ -10,7 +10,7 @@
     metas_categoria: {}
   };
   const AUTH_KEY = "caderneta-auth";
-  const TABS = ["mes", "investimentos", "metas", "fixos"];
+  const TABS = ["painel", "mes", "investimentos", "metas", "fixos"];
 
   // Tabelas do Supabase e as colunas que o app lê e grava
   const TABLES = ["lancamentos", "gastos_fixos", "acoes_ops", "caixinhas", "caixinha_movs"];
@@ -141,12 +141,13 @@
     };
   }
   const emptyData = () => Object.fromEntries(TABLES.map(t => [t, []]));
-  const emptyMercado = () => ({ cotacoes: {}, erros: {}, cotacoesEm: null, cdi: [], cdiDesde: null, cdiEm: null, carregando: false, erro: null });
+  const emptyMercado = () => ({ cotacoes: {}, erros: {}, cotacoesEm: null, cdi: [], cdiDesde: null, cdiEm: null, historico: {}, histErros: {}, histEm: null, histDesde: null, carregando: false, erro: null });
 
   /* ================= estado ================= */
   const state = {
     user: null, data: emptyData(), prefs: normPrefs(null), outbox: [], syncedAt: null, mercado: emptyMercado(),
-    tab: "mes", invSub: "acoes", month: curMonth(), filter: "todos", q: "",
+    tab: "painel", invSub: "acoes", month: curMonth(), filter: "todos", q: "",
+    periodo: [3, 6, 12].includes(Number(store.get("cad:v1:periodo", 6))) ? Number(store.get("cad:v1:periodo", 6)) : 6, tabela: { fluxo: false, pat: false },
     syncing: false, online: navigator.onLine, syncError: null, lastAttempt: 0,
     installEvt: null, loggingOut: false,
     edit: { tx: null, op: null, cx: null, mov: null, fx: null }, det: null, voltar: null
@@ -174,8 +175,8 @@
   }
   function persistMercado() {
     if (!state.user) return;
-    const { cotacoes, erros, cotacoesEm, cdi, cdiDesde, cdiEm } = state.mercado;
-    store.set(K.mercado(state.user.id), { cotacoes, erros, cotacoesEm, cdi, cdiDesde, cdiEm });
+    const { cotacoes, erros, cotacoesEm, cdi, cdiDesde, cdiEm, historico, histErros, histEm, histDesde } = state.mercado;
+    store.set(K.mercado(state.user.id), { cotacoes, erros, cotacoesEm, cdi, cdiDesde, cdiEm, historico, histErros, histEm, histDesde });
   }
   const pendingIds = () => new Set(state.outbox.filter(o => o.kind === "upsert").map(o => o.row.id));
 
@@ -317,7 +318,7 @@
       autoLancarFixos();
       render();
       if (!$("catScrim").hidden) renderCatEditor();
-      if (state.tab === "investimentos") atualizarMercado(false);
+      if (state.tab === "investimentos" || state.tab === "painel") atualizarMercado(false);
     } catch (e) {
       if (isNetErr(e)) state.online = false;
       else state.syncError = humanError(e);
@@ -392,17 +393,25 @@
     const agora = Date.now(), M = state.mercado;
     const precisaCot = tickers.length > 0 && (force || !M.cotacoesEm || agora - M.cotacoesEm > 5 * 60_000 || tickers.some(t => !M.cotacoes[t] && !M.erros[t]));
     const precisaCdi = !!cdiDesde && (force || !M.cdiEm || agora - M.cdiEm > 6 * 3600_000 || !M.cdiDesde || cdiDesde < M.cdiDesde);
-    if (!precisaCot && !precisaCdi) return;
+    // histórico mensal (só para o painel): fechamento de cada mês dos últimos 12 meses
+    const todos = [...new Set(state.data.acoes_ops.map(o => o.ticker))];
+    const primeiraOp = state.data.acoes_ops.map(o => o.data).sort()[0];
+    const histDesde = primeiraOp ? [primeiraOp.slice(0, 7), shiftMonth(curMonth(), -11)].sort()[1] : null;
+    const precisaHist = state.tab === "painel" && todos.length > 0 && !!histDesde
+      && (force || !M.histEm || agora - M.histEm > 12 * 3600_000 || !M.histDesde || histDesde < M.histDesde || todos.some(t => !M.historico[t] && !M.histErros[t]));
+    if (!precisaCot && !precisaCdi && !precisaHist) return;
     M.carregando = true; M.erro = null; renderInvest();
     try {
       const body = {};
       if (precisaCot) body.tickers = tickers;
       if (precisaCdi) body.cdiDesde = cdiDesde;
+      if (precisaHist) body.historico = { tickers: todos, desde: histDesde };
       const { data, error } = await sb.functions.invoke("mercado", { body });
       if (error) throw error;
       if (data && data.cotacoes) { M.cotacoes = { ...M.cotacoes, ...data.cotacoes }; M.erros = data.erros || {}; M.cotacoesEm = Date.now(); }
       if (data && Array.isArray(data.cdi)) { M.cdi = data.cdi; M.cdiDesde = cdiDesde; M.cdiEm = Date.now(); }
       if (data && data.cdiErro) M.erro = `CDI: ${data.cdiErro}`;
+      if (data && data.historico) { M.historico = { ...M.historico, ...data.historico }; M.histErros = data.historicoErros || {}; M.histEm = Date.now(); M.histDesde = histDesde; }
       persistMercado();
     } catch (e) {
       M.erro = isNetErr(e) ? "Sem internet: mostrando os últimos valores salvos." : "Não foi possível buscar as cotações agora. Tente de novo em instantes.";
@@ -527,19 +536,20 @@
 
   /* ================= abas ================= */
   function setTab(tab, opts = {}) {
-    if (!TABS.includes(tab)) tab = "mes";
+    if (!TABS.includes(tab)) tab = "painel";
     state.tab = tab;
     for (const t of TABS) $(`tab-${t}`).hidden = t !== tab;
     document.querySelectorAll("[data-tab]").forEach(b => { if (b.dataset.tab === tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
-    $("monthNav").hidden = tab === "investimentos";
+    $("monthNav").hidden = tab === "investimentos" || tab === "painel";
     updateAddButtons();
-    if (!opts.keepHash) history.replaceState(null, "", tab === "mes" ? location.pathname + location.search : `#${tab}`);
+    if (!opts.keepHash) history.replaceState(null, "", tab === "painel" ? location.pathname + location.search : `#${tab}`);
     if (!opts.keepScroll) window.scrollTo(0, 0);
-    if (tab === "investimentos") atualizarMercado(false);
+    if (tab === "painel") renderPainel();
+    if (tab === "investimentos" || tab === "painel") atualizarMercado(false);
   }
   function updateAddButtons() {
     const t = state.tab;
-    const label = t === "mes" ? "Novo lançamento"
+    const label = t === "mes" || t === "painel" ? "Novo lançamento"
       : t === "investimentos" ? (state.invSub === "acoes" ? "Nova operação" : (state.data.caixinhas.length ? "Novo aporte" : "Nova caixinha"))
       : t === "fixos" ? "Novo gasto fixo" : "";
     $("btnAddText").textContent = label;
@@ -548,7 +558,7 @@
     $("fab").setAttribute("aria-label", label || "Adicionar");
   }
   function addForTab() {
-    if (state.tab === "mes") openTx();
+    if (state.tab === "mes" || state.tab === "painel") openTx();
     else if (state.tab === "investimentos") {
       if (state.invSub === "acoes") openOp();
       else if (state.data.caixinhas.length) openMov();
@@ -564,9 +574,327 @@
     renderInvest();
     renderMetas();
     renderFixos();
+    if (state.tab === "painel") renderPainel();
     updateAddButtons();
     setStatus();
     if (!$("detScrim").hidden) renderDetalhe();
+  }
+
+  /* ---------- aba Painel ---------- */
+  const COMPACT = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 1 });
+  const moneyCompact = c => COMPACT.format(Math.round(c || 0) / 100);
+  const mesCurto = m => monthName(m, { month: "short" });
+  const fimDoMes = m => `${m}-${pad(daysInMonth(m))}`;
+  const mesesAte = (fim, n) => Array.from({ length: n }, (_, i) => shiftMonth(fim, i - n + 1));
+  const soma = a => a.reduce((s, v) => s + v, 0);
+
+  // Escala com valores redondos (em centavos): 0, metade e o topo
+  function topoBonito(v) {
+    if (!(v > 0)) return 10000;
+    const p = Math.pow(10, Math.floor(Math.log10(v)));
+    for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (m * p >= v) return m * p;
+    return 10 * p;
+  }
+  // Coluna com ponta arredondada (4px) e base reta
+  function barra(x, y, w, h) {
+    const r = Math.min(4, w / 2, h);
+    return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+  }
+
+  function fluxo(meses) {
+    const idx = new Map(meses.map((m, i) => [m, i]));
+    const z = () => meses.map(() => 0);
+    const rec = z(), desp = z(), fixos = z(), qtd = z(), cats = {};
+    for (const r of state.data.lancamentos) {
+      const i = idx.get(monthOf(r)); if (i == null) continue;
+      qtd[i]++;
+      if (r.tipo === "receita") rec[i] += r.valor_centavos;
+      else {
+        desp[i] += r.valor_centavos;
+        if (r.fixo_id) fixos[i] += r.valor_centavos;
+        (cats[r.categoria] = cats[r.categoria] || z())[i] += r.valor_centavos;
+      }
+    }
+    return { rec, desp, fixos, qtd, cats, comDados: qtd.filter(n => n > 0).length };
+  }
+
+  // Patrimônio no fim de cada mês: ações a preço de fechamento do mês, caixinhas com o CDI diário
+  function evolucao(meses) {
+    const hist = state.mercado.historico || {}, atual = curMonth();
+    const ops = state.data.acoes_ops.slice().sort(byDateAsc);
+    const pos = new Map();
+    let j = 0, semPreco = false;
+    const acoes = [], custo = [];
+    for (const m of meses) {
+      const fim = fimDoMes(m);
+      while (j < ops.length && ops[j].data <= fim) {
+        const o = ops[j++];
+        let p = pos.get(o.ticker);
+        if (!p) pos.set(o.ticker, p = { qtd: 0, custo: 0 });
+        if (o.tipo === "compra") { p.custo += o.quantidade * o.preco * 100 + (o.taxas_centavos || 0); p.qtd += o.quantidade; }
+        else {
+          const q = Math.min(o.quantidade, p.qtd), pm = p.qtd > 0 ? p.custo / p.qtd : 0;
+          p.custo -= q * pm; p.qtd -= q;
+          if (p.qtd < 1e-9) { p.qtd = 0; p.custo = 0; }
+        }
+      }
+      let v = 0, c = 0;
+      for (const [t, p] of pos) {
+        if (p.qtd <= 0) continue;
+        c += p.custo;
+        const agora = m === atual && state.mercado.cotacoes[t] ? state.mercado.cotacoes[t].preco : null;
+        const preco = agora ?? (hist[t] ? hist[t][m] : null);
+        if (preco != null) v += p.qtd * preco * 100; else { v += p.custo; semPreco = true; }
+      }
+      acoes.push(v); custo.push(c);
+    }
+
+    const cdi = state.mercado.cdi || [];
+    const rf = meses.map(() => 0), aportRf = meses.map(() => 0);
+    let rfSemCdi = false;
+    for (const cx of state.data.caixinhas) {
+      const movs = state.data.caixinha_movs.filter(m => m.caixinha_id === cx.id).sort(byDateAsc);
+      if (!movs.length) continue;
+      const fator = (cx.percentual_cdi || 100) / 100;
+      const usaCdi = cdi.length > 0 && !!state.mercado.cdiDesde && state.mercado.cdiDesde <= movs[0].data;
+      if (!usaCdi) rfSemCdi = true;
+      let saldo = 0, aport = 0, k = 0, d = 0;
+      const aplicar = mv => { const val = mv.tipo === "aporte" ? mv.valor_centavos : -mv.valor_centavos; saldo = Math.max(0, saldo + val); aport += val; };
+      meses.forEach((m, i) => {
+        const fim = fimDoMes(m);
+        if (usaCdi) {
+          while (d < cdi.length && cdi[d].data <= fim) {
+            while (k < movs.length && movs[k].data < cdi[d].data) aplicar(movs[k++]);
+            saldo *= 1 + (cdi[d].taxa / 100) * fator;
+            d++;
+          }
+        }
+        while (k < movs.length && movs[k].data <= fim) aplicar(movs[k++]);
+        rf[i] += saldo; aportRf[i] += aport;
+      });
+    }
+    return { acoes, rf, aplicado: meses.map((_, i) => custo[i] + aportRf[i]), semPreco, rfSemCdi };
+  }
+
+  function kpi(label, valor, sub, cls = "", texto = false) {
+    return `<div class="kpi"><span class="label">${label}</span><span class="kv-v${texto ? " txt" : ""}">${valor}</span>${sub ? `<span class="kv-s ${cls}">${sub}</span>` : ""}</div>`;
+  }
+
+  function renderPainel() {
+    const n = state.periodo, atual = curMonth();
+    const meses = mesesAte(atual, n), antes = mesesAte(shiftMonth(atual, -n), n);
+    document.querySelectorAll("[data-per]").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.per) === n)));
+    $("dashPer").textContent = `${mesCurto(meses[0])} a ${monthName(atual, { month: "short", year: "numeric" }).toLowerCase()}`;
+
+    /* ----- gastos ----- */
+    const f = fluxo(meses), fa = fluxo(antes);
+    const totRec = soma(f.rec), totDesp = soma(f.desp), totFix = soma(f.fixos);
+    const medio = f.comDados ? totDesp / f.comDados : 0;
+    const medioAntes = fa.comDados ? soma(fa.desp) / fa.comDados : 0;
+    let delta = "", deltaCls = "";
+    if (f.comDados && fa.comDados && medioAntes > 0) {
+      const d = (medio / medioAntes - 1) * 100;
+      delta = `${d >= 0 ? "▲" : "▼"} ${pct(Math.abs(d))} vs ${n} meses antes`;
+      deltaCls = d > 0.5 ? "ruim" : d < -0.5 ? "bom" : "";
+    } else delta = f.comDados ? `média de ${plural(f.comDados, "mês com registro", "meses com registro")}` : "";
+    const catsOrd = Object.entries(f.cats).map(([c, arr]) => ({ c, arr, total: soma(arr) })).sort((a, b) => b.total - a.total);
+    const poup = totRec > 0 ? (totRec - totDesp) / totRec * 100 : null;
+    $("kpiGastos").innerHTML = f.comDados
+      ? kpi("Gasto médio por mês", money(medio), delta, deltaCls)
+        + kpi("Sobrou da renda", poup != null ? pct(poup) : "—", poup != null ? `${moneySigned(totRec - totDesp)} no período` : "sem receitas no período", poup != null ? (poup >= 0 ? "bom" : "ruim") : "")
+        + kpi("Gastos fixos", totDesp > 0 ? pct(totFix / totDesp * 100) : "—", totDesp > 0 ? `${money(totFix)} dos gastos` : "")
+        + kpi("Maior categoria", catsOrd[0] ? esc(catsOrd[0].c) : "—", catsOrd[0] ? `${money(catsOrd[0].total / f.comDados)} por mês` : "", "", true)
+      : `<div class="dash-empty" style="grid-column:1/-1">Ainda não há lançamentos nesses meses. Os gráficos aparecem conforme você registra receitas e despesas.</div>`;
+    $("cardFluxo").hidden = !f.comDados;
+    $("cardCats").hidden = !catsOrd.length;
+    if (f.comDados) desenharFluxo(meses, f);
+    $("dashCats").innerHTML = catsOrd.map(({ c, arr, total }) => {
+      const media = total / f.comDados, meta = state.prefs.metas_categoria[c];
+      const chip = meta ? (media > meta ? `<span class="chip-s bad">acima da meta de ${money(meta)}</span>` : `<span class="chip-s ok">dentro da meta de ${money(meta)}</span>`) : "";
+      return `<div class="crow">
+        <div style="min-width:0"><div class="n">${esc(c)}</div><div class="s">${money(media)} por mês · ${pct(totDesp ? total / totDesp * 100 : 0)} dos gastos</div>${chip}</div>
+        ${sparkline(arr)}
+        <div class="v">${money(total)}</div></div>`;
+    }).join("");
+
+    /* ----- investimentos ----- */
+    const pos = calcPosicoes().filter(p => p.qtd > 0), cxs = calcCaixinhas().filter(c => c.movs.length);
+    const tem = pos.length > 0 || cxs.length > 0;
+    let aValor = 0, aCusto = 0;
+    for (const p of pos) { aCusto += p.custo; aValor += p.valor != null ? p.valor : p.custo; }
+    const rSaldo = soma(cxs.map(c => c.saldo)), rAport = soma(cxs.map(c => c.aportado));
+    const patrimonio = aValor + rSaldo, aplicado = aCusto + rAport, resultado = patrimonio - aplicado;
+    const mesSet = new Set(meses);
+    let aportes = 0;
+    for (const o of state.data.acoes_ops) if (mesSet.has(monthOf(o))) aportes += o.tipo === "compra" ? o.quantidade * o.preco * 100 + (o.taxas_centavos || 0) : -(o.quantidade * o.preco * 100 - (o.taxas_centavos || 0));
+    for (const m of state.data.caixinha_movs) if (mesSet.has(monthOf(m))) aportes += m.tipo === "aporte" ? m.valor_centavos : -m.valor_centavos;
+    $("kpiInv").innerHTML = tem
+      ? kpi("Patrimônio investido", money(patrimonio), `${money(aplicado)} aplicados`)
+        + kpi("Resultado", moneySigned(resultado), aplicado > 0 ? `${pctSigned(resultado / aplicado * 100)} sobre o aplicado` : "", resultado > 0.5 ? "bom" : resultado < -0.5 ? "ruim" : "")
+        + kpi("Aportes no período", moneySigned(aportes), "compras e aportes menos vendas e resgates")
+        + kpi("Investiu da renda", totRec > 0 ? pct(Math.max(0, aportes) / totRec * 100) : "—", totRec > 0 ? "dos ganhos no período" : "sem receitas no período")
+      : `<div class="dash-empty" style="grid-column:1/-1">Nenhum investimento registrado ainda.<br><button type="button" class="btn" data-act="ir-invest">Registrar investimento</button></div>`;
+    $("cardPat").hidden = !tem;
+    $("cardAloc").hidden = !tem;
+    if (tem) {
+      const ev = evolucao(meses);
+      desenharPatrimonio(meses, ev);
+      const notas = [];
+      if (ev.semPreco) notas.push(state.mercado.carregando ? "buscando o histórico de cotações…" : "meses sem cotação usam o valor aplicado");
+      if (ev.rfSemCdi) notas.push("caixinhas sem CDI carregado aparecem sem rendimento");
+      $("patNota").textContent = `Valor no fim de cada mês${notas.length ? ` · ${notas.join(" · ")}` : ""}.`;
+      desenharAlocacao(pos, cxs, aValor, rSaldo);
+    }
+  }
+
+  function sparkline(arr) {
+    const w = 84, h = 26, nb = arr.length, gap = nb > 6 ? 1.5 : 2;
+    const bw = (w - gap * (nb - 1)) / nb, max = Math.max(1, ...arr);
+    return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">${arr.map((v, i) => {
+      const bh = v > 0 ? Math.max(2, v / max * h) : 0;
+      return bh ? `<rect class="${i === nb - 1 ? "cur" : ""}" x="${(i * (bw + gap)).toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="1.5"/>` : "";
+    }).join("")}</svg>`;
+  }
+
+  function eixoY(svgW, padL, padT, ph, topo) {
+    let s = "";
+    for (const f of [0, 0.5, 1]) {
+      const y = (padT + ph - f * ph).toFixed(1);
+      s += `<line class="${f === 0 ? "axis" : "gl"}" x1="${padL}" x2="${svgW}" y1="${y}" y2="${y}"/>`;
+      s += `<text class="ax num" x="${padL - 8}" y="${(Number(y) + 3.5).toFixed(1)}" text-anchor="end">${esc(f === 0 ? "0" : moneyCompact(topo * f))}</text>`;
+    }
+    return s;
+  }
+  const mostrarRotulo = (i, total, largura) => total <= 6 || largura >= 520 || i % 2 === (total - 1) % 2;
+
+  function desenharFluxo(meses, f) {
+    const el = $("chFluxo");
+    if (state.tabela.fluxo) {
+      el.innerHTML = `<div class="table-wrap"><table class="dtable"><thead><tr><th>Mês</th><th>Receitas</th><th>Despesas</th><th>Saldo</th></tr></thead><tbody>${meses.map((m, i) =>
+        `<tr><td>${esc(monthName(m))}</td><td>${money(f.rec[i])}</td><td>${money(f.desp[i])}</td><td>${moneySigned(f.rec[i] - f.desp[i])}</td></tr>`).join("")}</tbody></table></div>`;
+      return;
+    }
+    const W = Math.max(260, el.clientWidth || 600), H = 210, padL = 58, padT = 10, padB = 26, ph = H - padT - padB, pw = W - padL;
+    const topo = topoBonito(Math.max(...f.rec, ...f.desp));
+    const band = pw / meses.length, bw = Math.max(4, Math.min(24, (band * 0.72 - 2) / 2)), grupo = bw * 2 + 2;
+    const y = v => padT + ph - v / topo * ph;
+    let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Receitas e despesas por mês">` + eixoY(W, padL, padT, ph, topo);
+    meses.forEach((m, i) => {
+      const x0 = padL + band * i + (band - grupo) / 2;
+      s += `<g class="col" data-i="${i}">`;
+      if (f.rec[i] > 0) s += `<path class="b-rec" d="${barra(x0, y(f.rec[i]), bw, padT + ph - y(f.rec[i]))}"/>`;
+      if (f.desp[i] > 0) s += `<path class="b-desp" d="${barra(x0 + bw + 2, y(f.desp[i]), bw, padT + ph - y(f.desp[i]))}"/>`;
+      s += `</g>`;
+      if (mostrarRotulo(i, meses.length, W)) s += `<text class="ax" x="${(padL + band * i + band / 2).toFixed(1)}" y="${H - 7}" text-anchor="middle">${esc(mesCurto(m))}</text>`;
+    });
+    meses.forEach((m, i) => { s += `<rect class="hit" data-i="${i}" x="${(padL + band * i).toFixed(1)}" y="${padT}" width="${band.toFixed(1)}" height="${ph}" tabindex="0" aria-label="${esc(monthName(m))}: receitas ${esc(money(f.rec[i]))}, despesas ${esc(money(f.desp[i]))}"/>`; });
+    el.innerHTML = s + `</svg><div class="tip" hidden></div>`;
+    ligarDica(el, i => ({
+      titulo: monthName(meses[i]),
+      x: padL + band * i + band / 2,
+      linhas: [
+        { cor: "var(--c-rec)", valor: money(f.rec[i]), nome: "Receitas" },
+        { cor: "var(--c-desp)", valor: money(f.desp[i]), nome: "Despesas" },
+        { cor: null, valor: moneySigned(f.rec[i] - f.desp[i]), nome: "Saldo" }
+      ]
+    }), "col");
+  }
+
+  function desenharPatrimonio(meses, ev) {
+    const el = $("chPat");
+    const tot = meses.map((_, i) => ev.acoes[i] + ev.rf[i]);
+    if (state.tabela.pat) {
+      el.innerHTML = `<div class="table-wrap"><table class="dtable"><thead><tr><th>Mês</th><th>Ações</th><th>Renda fixa</th><th>Total</th><th>Aplicado</th></tr></thead><tbody>${meses.map((m, i) =>
+        `<tr><td>${esc(monthName(m))}</td><td>${money(ev.acoes[i])}</td><td>${money(ev.rf[i])}</td><td>${money(tot[i])}</td><td>${money(ev.aplicado[i])}</td></tr>`).join("")}</tbody></table></div>`;
+      return;
+    }
+    const W = Math.max(260, el.clientWidth || 600), H = 220, padL = 58, padR = 14, padT = 22, padB = 26, ph = H - padT - padB, pw = W - padL - padR;
+    const topo = topoBonito(Math.max(...tot, ...ev.aplicado));
+    const passo = meses.length > 1 ? pw / (meses.length - 1) : 0;
+    const x = i => (meses.length > 1 ? padL + passo * i : padL + pw / 2);
+    const y = v => padT + ph - v / topo * ph;
+    const linha = vals => vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+    const area = (baixo, cima) => `${linha(cima)}${baixo.map((v, i) => [i, v]).reverse().map(([i, v]) => `L${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("")}Z`;
+    const zero = meses.map(() => 0);
+    let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolução do patrimônio investido">` + eixoY(W - padR, padL, padT, ph, topo);
+    s += `<path class="a-acoes" d="${area(zero, ev.acoes)}"/><path class="a-rf" d="${area(ev.acoes, tot)}"/>`;
+    s += `<path class="l-acoes" d="${linha(ev.acoes)}"/><path class="l-rf" d="${linha(tot)}"/><path class="l-apl" d="${linha(ev.aplicado)}"/>`;
+    const u = meses.length - 1;
+    s += `<circle class="d-rf ring" cx="${x(u).toFixed(1)}" cy="${y(tot[u]).toFixed(1)}" r="4.5"/>`;
+    s += `<text class="end-lbl" x="${x(u).toFixed(1)}" y="${(y(tot[u]) - 10).toFixed(1)}" text-anchor="end">${esc(moneyCompact(tot[u]))}</text>`;
+    meses.forEach((m, i) => { if (mostrarRotulo(i, meses.length, W)) s += `<text class="ax" x="${x(i).toFixed(1)}" y="${H - 7}" text-anchor="${i === 0 && meses.length > 1 ? "start" : i === u && meses.length > 1 ? "end" : "middle"}">${esc(mesCurto(m))}</text>`; });
+    s += `<g class="cross-g" visibility="hidden"><line class="cross" y1="${padT}" y2="${padT + ph}"/><circle class="d-acoes ring" r="4.5"/><circle class="d-rf ring" r="4.5"/><circle class="d-apl ring" r="4.5"/></g>`;
+    meses.forEach((m, i) => {
+      const larg = meses.length > 1 ? passo : pw, x0 = meses.length > 1 ? x(i) - passo / 2 : padL;
+      s += `<rect class="hit" data-i="${i}" x="${Math.max(padL - 8, x0).toFixed(1)}" y="${padT}" width="${larg.toFixed(1)}" height="${ph}" tabindex="0" aria-label="${esc(monthName(m))}: total ${esc(money(tot[i]))}"/>`;
+    });
+    el.innerHTML = s + `</svg><div class="tip" hidden></div>`;
+    ligarDica(el, i => {
+      const g = el.querySelector(".cross-g");
+      g.setAttribute("visibility", "visible");
+      g.querySelector(".cross").setAttribute("x1", x(i)); g.querySelector(".cross").setAttribute("x2", x(i));
+      [[".d-acoes", ev.acoes[i]], [".d-rf", tot[i]], [".d-apl", ev.aplicado[i]]].forEach(([sel, v]) => { const c = g.querySelector(sel); c.setAttribute("cx", x(i)); c.setAttribute("cy", y(v)); });
+      const res = tot[i] - ev.aplicado[i];
+      return {
+        titulo: monthName(meses[i]), x: x(i),
+        linhas: [
+          { cor: null, valor: money(tot[i]), nome: "Total" },
+          { cor: "var(--c-acoes)", valor: money(ev.acoes[i]), nome: "Ações" },
+          { cor: "var(--c-rf)", valor: money(ev.rf[i]), nome: "Renda fixa" },
+          { cor: "var(--c-apl)", valor: money(ev.aplicado[i]), nome: "Aplicado" },
+          { cor: null, valor: moneySigned(res), nome: "Resultado" }
+        ]
+      };
+    }, null, () => { const g = el.querySelector(".cross-g"); if (g) g.setAttribute("visibility", "hidden"); });
+  }
+
+  function desenharAlocacao(pos, cxs, aValor, rSaldo) {
+    const total = aValor + rSaldo;
+    const itens = [
+      ...pos.map(p => ({ nome: p.ticker, cor: "var(--c-acoes)", v: p.valor != null ? p.valor : p.custo })),
+      ...cxs.map(c => ({ nome: c.cx.nome, cor: "var(--c-rf)", v: c.saldo }))
+    ].sort((a, b) => b.v - a.v);
+    const pa = total > 0 ? aValor / total * 100 : 0, pr = total > 0 ? rSaldo / total * 100 : 0;
+    $("dashAloc").innerHTML = `
+      <div class="aloc-sum"><span><i class="sw" style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--c-acoes)"></i> Ações <b>${pct(pa)}</b></span><span><i class="sw" style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--c-rf)"></i> Renda fixa <b>${pct(pr)}</b></span></div>
+      <div class="aloc-bar" role="img" aria-label="Ações ${pct(pa)}, renda fixa ${pct(pr)}">${pa > 0 ? `<i style="width:${pa}%;background:var(--c-acoes)"></i>` : ""}${pr > 0 ? `<i style="width:${pr}%;background:var(--c-rf)"></i>` : ""}</div>
+      ${itens.map(it => `<div class="arow"><span class="dot" style="background:${it.cor}"></span><span class="nm">${esc(it.nome)}</span><span class="v">${money(it.v)}</span><span class="p">${pct(total > 0 ? it.v / total * 100 : 0)}</span></div>`).join("")}`;
+  }
+
+  // Dica ao passar o mouse ou tocar: mostra os valores do mês; teclado também funciona
+  function ligarDica(el, conteudo, classeCol, aoSair) {
+    const tip = el.querySelector(".tip");
+    const esconder = () => {
+      tip.hidden = true;
+      if (classeCol) el.querySelectorAll(`.${classeCol}`).forEach(g => g.classList.remove("dim"));
+      if (aoSair) aoSair();
+    };
+    const mostrar = hit => {
+      const i = Number(hit.dataset.i), c = conteudo(i);
+      if (classeCol) el.querySelectorAll(`.${classeCol}`).forEach(g => g.classList.toggle("dim", Number(g.dataset.i) !== i));
+      tip.textContent = "";
+      const h = document.createElement("div"); h.className = "tip-h"; h.textContent = c.titulo; tip.appendChild(h);
+      for (const l of c.linhas) {
+        const r = document.createElement("div"); r.className = "tip-r";
+        const k = document.createElement("i"); if (l.cor) k.style.background = l.cor; else k.className = "none";
+        const b = document.createElement("b"); b.textContent = l.valor;
+        const sp = document.createElement("span"); sp.textContent = l.nome;
+        r.append(k, b, sp); tip.appendChild(r);
+      }
+      tip.hidden = false;
+      const svg = el.querySelector("svg"), escala = svg.getBoundingClientRect().width / Number(svg.getAttribute("width"));
+      const larg = tip.offsetWidth, maxX = el.clientWidth - larg;
+      let left = c.x * escala + 12;
+      if (left > maxX) left = c.x * escala - larg - 12;
+      tip.style.left = `${Math.max(0, Math.min(maxX, left))}px`;
+      tip.style.top = "0px";
+    };
+    el.onpointermove = e => { const hit = e.target.closest(".hit"); if (hit) mostrar(hit); };
+    el.onpointerdown = e => { const hit = e.target.closest(".hit"); if (hit) mostrar(hit); };
+    el.onpointerleave = e => { if (e.pointerType !== "touch") esconder(); };
+    el.onfocusin = e => { const hit = e.target.closest(".hit"); if (hit) mostrar(hit); };
+    el.onfocusout = esconder;
+    el._esconder = esconder;
   }
 
   /* ---------- aba Mês ---------- */
@@ -1278,6 +1606,29 @@
   $("btnCot").onclick = () => atualizarMercado(true);
   $("btnNovaCx").onclick = () => openCx();
   $("mesMeta").onclick = () => setTab("metas");
+
+  // Painel
+  document.querySelectorAll("[data-per]").forEach(b => {
+    b.onclick = () => { state.periodo = Number(b.dataset.per); store.set("cad:v1:periodo", state.periodo); renderPainel(); };
+  });
+  document.querySelectorAll("[data-tabela]").forEach(b => {
+    b.onclick = () => {
+      const k = b.dataset.tabela;
+      state.tabela[k] = !state.tabela[k];
+      b.textContent = state.tabela[k] ? "Ver gráfico" : "Ver tabela";
+      renderPainel();
+    };
+  });
+  $("tab-painel").addEventListener("click", e => { if (e.target.closest('[data-act="ir-invest"]')) setTab("investimentos"); });
+  document.addEventListener("pointerdown", e => {
+    if (e.target.closest(".chart")) return;
+    document.querySelectorAll(".chart").forEach(c => { if (c._esconder) c._esconder(); });
+  });
+  let resizeT;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeT);
+    resizeT = setTimeout(() => { if (state.tab === "painel" && !$("screen-app").hidden) renderPainel(); }, 150);
+  });
 
   // Mês
   $("q").addEventListener("input", e => { state.q = e.target.value; renderList(monthRows()); });

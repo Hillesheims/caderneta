@@ -63,6 +63,29 @@ async function cotacao(ticker: string) {
   };
 }
 
+// Fechamento de cada mês desde "YYYY-MM" (para a evolução do patrimônio)
+async function historico(ticker: string, desde: string) {
+  const simbolo = /[.^=]/.test(ticker) ? ticker : `${ticker}.SA`;
+  const [y, m] = desde.split("-").map(Number);
+  const inicio = Math.floor(Date.UTC(y, m - 1, 1) / 1000) - 3 * 86400;
+  const fim = Math.floor(Date.now() / 1000);
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(simbolo)}?period1=${inicio}&period2=${fim}&interval=1mo`;
+  const r = await fetch(url, { headers: { "User-Agent": UA, "Accept": "application/json" } });
+  if (r.status === 404) throw new Error("ticker não encontrado");
+  if (!r.ok) throw new Error(`histórico indisponível (HTTP ${r.status})`);
+  const j = await r.json();
+  const res = j?.chart?.result?.[0];
+  const ts: number[] = res?.timestamp || [];
+  const fech: (number | null)[] = res?.indicators?.quote?.[0]?.close || [];
+  const fuso = typeof res?.meta?.gmtoffset === "number" ? res.meta.gmtoffset : -10800;
+  const meses: Record<string, number> = {};
+  ts.forEach((t, i) => {
+    const c = fech[i];
+    if (typeof c === "number" && Number.isFinite(c)) meses[new Date((t + fuso) * 1000).toISOString().slice(0, 7)] = c;
+  });
+  return meses;
+}
+
 const br = (iso: string) => { const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
 const hojeSP = () => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
 
@@ -91,20 +114,25 @@ Deno.serve(async (req: Request) => {
     return responder({ erro: "Entre no app para ver as cotações." }, 401);
   }
 
-  let pedido: { tickers?: unknown; cdiDesde?: unknown } = {};
+  let pedido: { tickers?: unknown; cdiDesde?: unknown; historico?: { tickers?: unknown; desde?: unknown } } = {};
   if (req.method === "POST") {
     pedido = await req.json().catch(() => ({}));
   } else {
     const u = new URL(req.url);
-    pedido = { tickers: u.searchParams.get("tickers")?.split(","), cdiDesde: u.searchParams.get("cdiDesde") ?? undefined };
+    pedido = {
+      tickers: u.searchParams.get("tickers")?.split(","),
+      cdiDesde: u.searchParams.get("cdiDesde") ?? undefined,
+      historico: u.searchParams.get("historico") ? { tickers: u.searchParams.get("historico")?.split(","), desde: u.searchParams.get("desde") ?? undefined } : undefined,
+    };
   }
+  const limpar = (lista: unknown[]) => [...new Set(lista.map((t) => String(t).trim().toUpperCase()))]
+    .filter((t) => /^[A-Z0-9.^=-]{1,15}$/.test(t))
+    .slice(0, 40);
 
   const saida: Record<string, unknown> = { geradoEm: new Date().toISOString() };
 
   if (Array.isArray(pedido.tickers)) {
-    const tickers = [...new Set(pedido.tickers.map((t) => String(t).trim().toUpperCase()))]
-      .filter((t) => /^[A-Z0-9.^=-]{1,15}$/.test(t))
-      .slice(0, 40);
+    const tickers = limpar(pedido.tickers);
     const cotacoes: Record<string, unknown> = {};
     const erros: Record<string, string> = {};
     await Promise.all(tickers.map(async (t) => {
@@ -119,6 +147,19 @@ Deno.serve(async (req: Request) => {
     const desde = pedido.cdiDesde;
     try { saida.cdi = await emCache(`cdi:${desde}`, 3 * 3600_000, () => cdiDiario(desde)); }
     catch (e) { saida.cdiErro = e instanceof Error ? e.message : String(e); }
+  }
+
+  const h = pedido.historico;
+  if (h && Array.isArray(h.tickers) && typeof h.desde === "string" && /^\d{4}-\d{2}$/.test(h.desde)) {
+    const desde = h.desde;
+    const hist: Record<string, unknown> = {};
+    const erros: Record<string, string> = {};
+    await Promise.all(limpar(h.tickers).map(async (t) => {
+      try { hist[t] = await emCache(`h:${t}:${desde}`, 6 * 3600_000, () => historico(t, desde)); }
+      catch (e) { erros[t] = e instanceof Error ? e.message : String(e); }
+    }));
+    saida.historico = hist;
+    saida.historicoErros = erros;
   }
 
   return responder(saida);

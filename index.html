@@ -53,6 +53,7 @@
         <h1>Caderneta</h1>
       </div>
       <nav class="tabs-top" aria-label="Seções">
+        <button type="button" data-tab="painel">Painel</button>
         <button type="button" data-tab="mes">Mês</button>
         <button type="button" data-tab="investimentos">Investimentos</button>
         <button type="button" data-tab="metas">Metas</button>
@@ -84,8 +85,56 @@
       <button type="button" class="m-today" id="todayM" hidden>Mês atual</button>
     </nav>
 
+    <!-- ===== Aba: Painel ===== -->
+    <section class="tab" id="tab-painel" aria-label="Painel">
+      <div class="dash-top">
+        <div class="seg" role="group" aria-label="Período do painel">
+          <button type="button" data-per="3" aria-pressed="false">3 meses</button>
+          <button type="button" data-per="6" aria-pressed="true">6 meses</button>
+          <button type="button" data-per="12" aria-pressed="false">12 meses</button>
+        </div>
+        <span class="hint" id="dashPer"></span>
+      </div>
+
+      <div class="dash">
+        <div class="dash-col">
+          <h2 class="dash-h">Gastos</h2>
+          <div class="kpis" id="kpiGastos"></div>
+          <section class="panel" id="cardFluxo">
+            <div class="panel-head">
+              <div class="head-txt"><h2>Receitas e despesas</h2><span class="hint">Toque numa coluna para ver os valores do mês.</span></div>
+              <button type="button" class="link-btn" data-tabela="fluxo">Ver tabela</button>
+            </div>
+            <div class="lg" aria-hidden="true"><span><i class="sw" style="background:var(--c-rec)"></i>Receitas</span><span><i class="sw" style="background:var(--c-desp)"></i>Despesas</span></div>
+            <div class="chart" id="chFluxo"></div>
+          </section>
+          <section class="panel" id="cardCats">
+            <div class="panel-head"><div class="head-txt"><h2>Gastos por categoria</h2><span class="hint">Total no período, média por mês e o caminho de cada mês.</span></div></div>
+            <div id="dashCats"></div>
+          </section>
+        </div>
+
+        <div class="dash-col">
+          <h2 class="dash-h">Investimentos</h2>
+          <div class="kpis" id="kpiInv"></div>
+          <section class="panel" id="cardPat">
+            <div class="panel-head">
+              <div class="head-txt"><h2>Evolução do patrimônio</h2><span class="hint" id="patNota">Valor no fim de cada mês.</span></div>
+              <button type="button" class="link-btn" data-tabela="pat">Ver tabela</button>
+            </div>
+            <div class="lg" aria-hidden="true"><span><i class="sw" style="background:var(--c-acoes)"></i>Ações</span><span><i class="sw" style="background:var(--c-rf)"></i>Renda fixa</span><span><i class="ln" style="background:var(--c-apl)"></i>Dinheiro aplicado</span></div>
+            <div class="chart" id="chPat"></div>
+          </section>
+          <section class="panel" id="cardAloc">
+            <div class="panel-head"><div class="head-txt"><h2>Onde está o dinheiro</h2><span class="hint">Valor atual de cada ação e caixinha.</span></div></div>
+            <div id="dashAloc"></div>
+          </section>
+        </div>
+      </div>
+    </section>
+
     <!-- ===== Aba: Mês ===== -->
-    <section class="tab" id="tab-mes" aria-label="Mês">
+    <section class="tab" id="tab-mes" aria-label="Mês" hidden>
       <section class="ledger" aria-label="Resumo do mês">
         <div>
           <span class="label">Saldo do mês</span>
@@ -221,6 +270,7 @@
   </div>
 
   <nav class="tabbar" aria-label="Seções">
+    <button type="button" data-tab="painel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Painel</span></button>
     <button type="button" data-tab="mes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="3"/><path d="M3.5 9.5h17M8 3v3M16 3v3M8 14h3M8 17h6"/></svg><span>Mês</span></button>
     <button type="button" data-tab="investimentos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5.5-5.5 4 4L21 7"/><path d="M15 7h6v6"/></svg><span>Investir</span></button>
     <button type="button" data-tab="metas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg><span>Metas</span></button>
