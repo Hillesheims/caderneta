@@ -52,10 +52,16 @@
         <img src="icons/icon.svg" width="30" height="30" alt="">
         <h1>Caderneta</h1>
       </div>
+      <nav class="tabs-top" aria-label="Seções">
+        <button type="button" data-tab="mes">Mês</button>
+        <button type="button" data-tab="investimentos">Investimentos</button>
+        <button type="button" data-tab="metas">Metas</button>
+        <button type="button" data-tab="fixos">Fixos</button>
+      </nav>
       <div class="top-actions">
         <button type="button" class="sync ok" id="sync" title="Sincronizar agora"><i aria-hidden="true"></i><span id="syncText">Sincronizado</span></button>
         <button class="btn primary add-desk" id="btnAdd" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Novo lançamento
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span id="btnAddText">Novo lançamento</span>
         </button>
         <button class="icon-btn" id="btnMenu" type="button" aria-label="Menu">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
@@ -71,64 +77,157 @@
       </div>
     </div>
 
-    <nav class="month" aria-label="Mês">
+    <nav class="month" id="monthNav" aria-label="Mês">
       <button type="button" id="prevM" aria-label="Mês anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg></button>
       <button type="button" id="nextM" aria-label="Próximo mês"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>
       <div class="m-label" id="mLabel"></div>
       <button type="button" class="m-today" id="todayM" hidden>Mês atual</button>
     </nav>
 
-    <section class="ledger" aria-label="Resumo do mês">
-      <div>
-        <span class="label">Saldo do mês</span>
-        <span class="big num" id="sumBal">R$ 0,00</span>
-        <span class="sub" id="sumHint">receitas menos despesas</span>
-      </div>
-      <div>
-        <span class="label">Receitas</span>
-        <span class="mid num pos" id="sumIn">R$ 0,00</span>
-        <span class="sub" id="sumInN">0 lançamentos</span>
-      </div>
-      <div>
-        <span class="label">Despesas</span>
-        <span class="mid num neg" id="sumOut">R$ 0,00</span>
-        <span class="sub" id="sumOutN">0 lançamentos</span>
+    <!-- ===== Aba: Mês ===== -->
+    <section class="tab" id="tab-mes" aria-label="Mês">
+      <section class="ledger" aria-label="Resumo do mês">
+        <div>
+          <span class="label">Saldo do mês</span>
+          <span class="big num" id="sumBal">R$ 0,00</span>
+          <span class="sub" id="sumHint">receitas menos despesas</span>
+        </div>
+        <div>
+          <span class="label">Receitas</span>
+          <span class="mid num pos" id="sumIn">R$ 0,00</span>
+          <span class="sub" id="sumInN">0 lançamentos</span>
+        </div>
+        <div>
+          <span class="label">Despesas</span>
+          <span class="mid num neg" id="sumOut">R$ 0,00</span>
+          <span class="sub" id="sumOutN">0 lançamentos</span>
+        </div>
+        <button type="button" class="ledger-goal" id="mesMeta" hidden></button>
+      </section>
+
+      <div class="grid">
+        <div class="col">
+          <section class="panel">
+            <div class="panel-head"><h2>Para onde foi o dinheiro</h2><span class="label num" id="catTotal"></span></div>
+            <div class="cats" id="cats"></div>
+          </section>
+          <section class="panel trend">
+            <div class="panel-head"><h2>Últimos 6 meses</h2></div>
+            <div id="trend"></div>
+            <div class="legend"><span><b class="lg-in"></b>Receitas</span><span><b class="lg-out"></b>Despesas</span></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><h2>Movimento por conta</h2></div>
+            <div class="accts" id="accts"></div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Lançamentos</h2>
+            <div class="seg" role="group" aria-label="Filtrar por tipo">
+              <button type="button" data-f="todos" aria-pressed="true">Todos</button>
+              <button type="button" data-f="receita" aria-pressed="false">Receitas</button>
+              <button type="button" data-f="despesa" aria-pressed="false">Despesas</button>
+            </div>
+          </div>
+          <input class="search" id="q" type="search" placeholder="Buscar por descrição ou categoria" aria-label="Buscar lançamentos" autocomplete="off">
+          <div id="list"></div>
+        </section>
       </div>
     </section>
 
-    <div class="grid">
-      <div class="col">
-        <section class="panel">
-          <div class="panel-head"><h2>Para onde foi o dinheiro</h2><span class="label num" id="catTotal"></span></div>
-          <div class="cats" id="cats"></div>
-        </section>
-        <section class="panel trend">
-          <div class="panel-head"><h2>Últimos 6 meses</h2></div>
-          <div id="trend"></div>
-          <div class="legend"><span><b class="lg-in"></b>Receitas</span><span><b class="lg-out"></b>Despesas</span></div>
-        </section>
-        <section class="panel">
-          <div class="panel-head"><h2>Movimento por conta</h2></div>
-          <div class="accts" id="accts"></div>
-        </section>
+    <!-- ===== Aba: Investimentos ===== -->
+    <section class="tab" id="tab-investimentos" aria-label="Investimentos" hidden>
+      <section class="ledger" aria-label="Resumo dos investimentos">
+        <div>
+          <span class="label">Total investido</span>
+          <span class="big num" id="invTotal">R$ 0,00</span>
+          <span class="sub" id="invTotalSub">ações a preço de mercado + caixinhas</span>
+        </div>
+        <div>
+          <span class="label">Ações</span>
+          <span class="mid num" id="invAcoes">R$ 0,00</span>
+          <span class="sub" id="invAcoesSub">—</span>
+        </div>
+        <div>
+          <span class="label">Renda fixa</span>
+          <span class="mid num" id="invRf">R$ 0,00</span>
+          <span class="sub" id="invRfSub">—</span>
+        </div>
+      </section>
+
+      <div class="subtabs seg" role="group" aria-label="Tipo de investimento">
+        <button type="button" data-sub="acoes" aria-pressed="true">Ações</button>
+        <button type="button" data-sub="rf" aria-pressed="false">Renda fixa</button>
       </div>
 
+      <section class="panel" id="acoesPanel">
+        <div class="panel-head">
+          <div class="head-txt"><h2>Ações</h2><span class="hint" id="cotInfo"></span></div>
+          <button type="button" class="btn" id="btnCot">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>Atualizar
+          </button>
+        </div>
+        <div id="acoesList"></div>
+      </section>
+
+      <section class="panel" id="rfPanel" hidden>
+        <div class="panel-head">
+          <div class="head-txt"><h2>Caixinhas</h2><span class="hint" id="cdiInfo"></span></div>
+          <button type="button" class="btn" id="btnNovaCx">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Nova caixinha
+          </button>
+        </div>
+        <div id="rfList"></div>
+      </section>
+    </section>
+
+    <!-- ===== Aba: Metas ===== -->
+    <section class="tab" id="tab-metas" aria-label="Metas" hidden>
+      <section class="panel goal-main" id="metaGeral"></section>
+      <section class="panel">
+        <div class="panel-head"><div class="head-txt"><h2>Metas por categoria</h2><span class="hint">Deixe em branco a categoria que não precisa de meta.</span></div></div>
+        <div class="goal-cats" id="metasCats"></div>
+      </section>
+    </section>
+
+    <!-- ===== Aba: Fixos ===== -->
+    <section class="tab" id="tab-fixos" aria-label="Gastos fixos" hidden>
+      <section class="ledger" aria-label="Resumo dos gastos fixos">
+        <div>
+          <span class="label">Fixos por mês</span>
+          <span class="big num neg" id="fxTotal">R$ 0,00</span>
+          <span class="sub" id="fxTotalSub">0 gastos ativos</span>
+        </div>
+        <div>
+          <span class="label" id="fxLancLabel">Lançados no mês</span>
+          <span class="mid num" id="fxLanc">R$ 0,00</span>
+          <span class="sub" id="fxLancSub">—</span>
+        </div>
+        <div>
+          <span class="label">Peso nas receitas</span>
+          <span class="mid num" id="fxPeso">—</span>
+          <span class="sub" id="fxPesoSub">dos ganhos do mês</span>
+        </div>
+      </section>
       <section class="panel">
         <div class="panel-head">
-          <h2>Lançamentos</h2>
-          <div class="seg" role="group" aria-label="Filtrar por tipo">
-            <button type="button" data-f="todos" aria-pressed="true">Todos</button>
-            <button type="button" data-f="receita" aria-pressed="false">Receitas</button>
-            <button type="button" data-f="despesa" aria-pressed="false">Despesas</button>
-          </div>
+          <div class="head-txt"><h2>Gastos fixos</h2><span class="hint">Todo dia 1º os fixos ativos entram sozinhos nos lançamentos do mês, com a data do vencimento.</span></div>
         </div>
-        <input class="search" id="q" type="search" placeholder="Buscar por descrição ou categoria" aria-label="Buscar lançamentos" autocomplete="off">
-        <div id="list"></div>
+        <div id="fixosList"></div>
       </section>
-    </div>
+    </section>
   </div>
 
-  <button class="fab" id="fab" type="button" aria-label="Novo lançamento"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+  <nav class="tabbar" aria-label="Seções">
+    <button type="button" data-tab="mes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="3"/><path d="M3.5 9.5h17M8 3v3M16 3v3M8 14h3M8 17h6"/></svg><span>Mês</span></button>
+    <button type="button" data-tab="investimentos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5.5-5.5 4 4L21 7"/><path d="M15 7h6v6"/></svg><span>Investir</span></button>
+    <button type="button" data-tab="metas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg><span>Metas</span></button>
+    <button type="button" data-tab="fixos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.7-5.7L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.7L4 15.5M4 20v-4.5h4.5"/></svg><span>Fixos</span></button>
+  </nav>
+
+  <button class="fab" id="fab" type="button" aria-label="Adicionar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
 </div>
 
 <!-- Folha: lançamento -->
@@ -138,9 +237,9 @@
       <h2 id="txTitle">Novo lançamento</h2>
       <button type="button" class="x" data-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
-    <div class="typeswitch" role="group" aria-label="Tipo">
-      <button type="button" data-t="despesa" aria-pressed="true">Despesa</button>
-      <button type="button" data-t="receita" aria-pressed="false">Receita</button>
+    <div class="typeswitch" id="txType" role="group" aria-label="Tipo">
+      <button type="button" data-t="despesa" class="t-out" aria-pressed="true">Despesa</button>
+      <button type="button" data-t="receita" class="t-in" aria-pressed="false">Receita</button>
     </div>
     <label class="amount"><span>R$</span><input id="fAmount" inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Valor"></label>
     <div class="fields">
@@ -149,12 +248,133 @@
       <label class="field"><span class="label">Conta / meio</span><select id="fAcct"></select></label>
       <label class="field full"><span class="label">Data</span><input id="fDate" type="date"></label>
     </div>
+    <p class="hint form-note" id="txNote" hidden></p>
     <div class="err" id="fErr" role="alert"></div>
     <div class="sheet-f">
-      <div id="delZone"></div>
+      <div class="del-zone" data-del="tx"></div>
       <div class="right">
         <button type="button" class="btn" data-close>Cancelar</button>
-        <button type="submit" class="btn primary" id="fSave">Salvar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Folha: operação de ação -->
+<div class="scrim" id="opScrim" hidden>
+  <form class="sheet" id="opForm" novalidate role="dialog" aria-modal="true" aria-labelledby="opTitle">
+    <div class="sheet-h">
+      <h2 id="opTitle">Nova operação</h2>
+      <button type="button" class="x" data-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="typeswitch" id="opType" role="group" aria-label="Tipo de operação">
+      <button type="button" data-t="compra" class="t-in" aria-pressed="true">Compra</button>
+      <button type="button" data-t="venda" class="t-out" aria-pressed="false">Venda</button>
+    </div>
+    <div class="fields">
+      <label class="field full"><span class="label">Ticker</span><input id="oTicker" list="tickersList" maxlength="15" placeholder="PETR4, MXRF11, BOVA11…" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+      <label class="field"><span class="label">Quantidade</span><input id="oQtd" inputmode="decimal" autocomplete="off" placeholder="100"></label>
+      <label class="field"><span class="label">Preço por ação (R$)</span><input id="oPreco" inputmode="decimal" autocomplete="off" placeholder="32,50"></label>
+      <label class="field"><span class="label">Data</span><input id="oData" type="date"></label>
+      <label class="field"><span class="label">Taxas (R$, opcional)</span><input id="oTaxas" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>
+    </div>
+    <datalist id="tickersList"></datalist>
+    <p class="hint form-note" id="opTotal"></p>
+    <div class="err" id="oErr" role="alert"></div>
+    <div class="sheet-f">
+      <div class="del-zone" data-del="op"></div>
+      <div class="right">
+        <button type="button" class="btn" data-close>Cancelar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Folha: detalhes (ação ou caixinha) -->
+<div class="scrim" id="detScrim" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="detTitle">
+    <div class="sheet-h">
+      <div class="head-txt"><h2 id="detTitle"></h2><span class="hint" id="detSub"></span></div>
+      <button type="button" class="x" data-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div id="detBody"></div>
+  </div>
+</div>
+
+<!-- Folha: caixinha -->
+<div class="scrim" id="cxScrim" hidden>
+  <form class="sheet" id="cxForm" novalidate role="dialog" aria-modal="true" aria-labelledby="cxTitle">
+    <div class="sheet-h">
+      <h2 id="cxTitle">Nova caixinha</h2>
+      <button type="button" class="x" data-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="fields">
+      <label class="field full"><span class="label">Nome</span><input id="cNome" maxlength="60" placeholder="Ex.: Reserva de emergência" autocomplete="off"></label>
+      <label class="field full"><span class="label">Rende quanto do CDI (%)</span><input id="cPct" inputmode="decimal" autocomplete="off" placeholder="100"></label>
+    </div>
+    <p class="hint form-note">A maioria das caixinhas de banco digital rende 100% do CDI. O saldo é estimado com o CDI diário oficial do Banco Central, antes do imposto de renda.</p>
+    <div class="err" id="cErr" role="alert"></div>
+    <div class="sheet-f">
+      <div class="del-zone" data-del="cx"></div>
+      <div class="right">
+        <button type="button" class="btn" data-close>Cancelar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Folha: aporte / resgate -->
+<div class="scrim" id="movScrim" hidden>
+  <form class="sheet" id="movForm" novalidate role="dialog" aria-modal="true" aria-labelledby="movTitle">
+    <div class="sheet-h">
+      <h2 id="movTitle">Novo aporte</h2>
+      <button type="button" class="x" data-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="typeswitch" id="movType" role="group" aria-label="Tipo de movimento">
+      <button type="button" data-t="aporte" class="t-in" aria-pressed="true">Aporte</button>
+      <button type="button" data-t="resgate" class="t-out" aria-pressed="false">Resgate</button>
+    </div>
+    <label class="amount"><span>R$</span><input id="mValor" inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Valor"></label>
+    <div class="fields">
+      <label class="field"><span class="label">Caixinha</span><select id="mCx"></select></label>
+      <label class="field"><span class="label">Data</span><input id="mData" type="date"></label>
+    </div>
+    <div class="err" id="mErr" role="alert"></div>
+    <div class="sheet-f">
+      <div class="del-zone" data-del="mov"></div>
+      <div class="right">
+        <button type="button" class="btn" data-close>Cancelar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Folha: gasto fixo -->
+<div class="scrim" id="fxScrim" hidden>
+  <form class="sheet" id="fxForm" novalidate role="dialog" aria-modal="true" aria-labelledby="fxTitle">
+    <div class="sheet-h">
+      <h2 id="fxTitle">Novo gasto fixo</h2>
+      <button type="button" class="x" data-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <label class="amount"><span>R$</span><input id="xValor" inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Valor"></label>
+    <div class="fields">
+      <label class="field full"><span class="label">Descrição</span><input id="xDesc" maxlength="80" placeholder="Ex.: Aluguel, internet, academia" autocomplete="off"></label>
+      <label class="field"><span class="label">Categoria</span><select id="xCat"></select></label>
+      <label class="field"><span class="label">Conta / meio</span><select id="xAcct"></select></label>
+      <label class="field"><span class="label">Dia do vencimento</span><input id="xDia" type="number" min="1" max="31" inputmode="numeric" placeholder="5"></label>
+      <label class="field check"><input id="xAtivo" type="checkbox" checked><span>Ativo (lança todo mês)</span></label>
+      <label class="field check full" id="xAgoraWrap"><input id="xAgora" type="checkbox" checked><span id="xAgoraTxt">Lançar também neste mês</span></label>
+    </div>
+    <p class="hint form-note" id="xNote" hidden></p>
+    <div class="err" id="xErr" role="alert"></div>
+    <div class="sheet-f">
+      <div class="del-zone" data-del="fx"></div>
+      <div class="right">
+        <button type="button" class="btn" data-close>Cancelar</button>
+        <button type="submit" class="btn primary">Salvar</button>
       </div>
     </div>
   </form>

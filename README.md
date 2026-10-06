@@ -54,6 +54,24 @@ Para uso pessoal, a instalação pelo Chrome já resolve.
 
 ---
 
+## Abas do app
+
+- **Mês:** saldo, receitas, despesas, gastos por categoria, últimos 6 meses e a lista de lançamentos.
+- **Investimentos**
+  - **Ações:** registre compras e vendas (ticker, quantidade, preço, data e taxas). O app calcula o
+    preço médio pelo método usado no Brasil (taxas entram no custo; vendas não mudam o preço médio),
+    busca a cotação da B3 (atraso de até 15 min) e mostra o resultado e o lucro realizado nas vendas.
+  - **Renda fixa (caixinhas):** registre aportes e resgates e informe quanto do CDI a caixinha rende.
+    O saldo é estimado com o CDI diário oficial do Banco Central (série SGS 12), antes do imposto de renda.
+- **Metas:** meta de gastos do mês (vale para todos os meses) e metas por categoria, com barra de
+  progresso e quanto ainda dá para gastar por dia.
+- **Fixos:** aluguel, assinaturas e outras contas que se repetem. Todo dia 1º os fixos ativos entram
+  sozinhos nos lançamentos do mês, com a data do vencimento. Se você apagar um desses lançamentos,
+  ele não volta. Mudanças no valor valem a partir do próximo lançamento.
+
+As cotações e o CDI vêm da função `mercado` (Supabase Edge Function, em `supabase/functions/mercado`).
+Ela só responde para quem está logado no app.
+
 ## Como o app funciona
 
 - **Sem internet:** o lançamento fica salvo no aparelho e o indicador no topo mostra
@@ -76,7 +94,9 @@ Para uso pessoal, a instalação pelo Chrome já resolve.
 | `sw.js` | Service worker: guarda o app no aparelho para abrir sem internet |
 | `manifest.webmanifest` | Nome, ícone e cores do app instalado |
 | `config.js` | URL e chave publicável do seu Supabase |
-| `supabase/schema.sql` | Tabelas `lancamentos` e `preferencias` com as regras de segurança |
+| `supabase/schema.sql` | Estrutura completa do banco (lançamentos, preferências e metas, gastos fixos, ações, caixinhas) com as regras de segurança |
+| `supabase/migrations/` | Alterações aplicadas no banco ao longo do tempo |
+| `supabase/functions/mercado/` | Função que busca cotações da B3 e o CDI diário do Banco Central |
 | `vendor/supabase.js` | Biblioteca oficial supabase-js (licença MIT) |
 | `fonts/` | Bricolage Grotesque, Figtree e IBM Plex Mono (licença OFL) |
 | `icons/` | Ícones do app |
