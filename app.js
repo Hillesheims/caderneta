@@ -101,12 +101,22 @@
   const pendingIds = () => new Set(state.outbox.filter(o => o.kind === "upsert").map(o => o.row.id));
 
   /* ================= Supabase ================= */
-  const configured = typeof CFG.supabaseUrl === "string" && /^https:\/\/\S+$/.test(CFG.supabaseUrl)
-    && typeof CFG.supabaseKey === "string" && CFG.supabaseKey.length > 20
-    && !/COLE_AQUI/.test(CFG.supabaseUrl + CFG.supabaseKey);
+  // Aceita a URL do jeito que vier: com /rest/v1/ no fim, com barra, ou até o link do painel.
+  function projectUrl(raw) {
+    try {
+      const u = new URL(String(raw || "").trim());
+      if (u.protocol !== "https:") return null;
+      const painel = u.hostname === "supabase.com" && u.pathname.match(/\/project\/([a-z0-9]+)/i);
+      if (painel) return `https://${painel[1].toLowerCase()}.supabase.co`;
+      return u.origin;
+    } catch { return null; }
+  }
+  const SB_URL = projectUrl(CFG.supabaseUrl);
+  const SB_KEY = typeof CFG.supabaseKey === "string" ? CFG.supabaseKey.trim() : "";
+  const configured = !!SB_URL && SB_KEY.length > 20 && !/COLE_AQUI/.test(String(CFG.supabaseUrl) + SB_KEY);
   let sb = null;
   if (configured && window.supabase && window.supabase.createClient) {
-    sb = window.supabase.createClient(CFG.supabaseUrl.replace(/\/+$/, ""), CFG.supabaseKey, {
+    sb = window.supabase.createClient(SB_URL, SB_KEY, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: AUTH_KEY }
     });
   }
@@ -523,6 +533,8 @@
         isNetErr(e) ? "Sem internet agora. Conecte-se para entrar." :
         /invalid login credentials/i.test(m) ? "E-mail ou senha incorretos." :
         /email not confirmed/i.test(m) ? "Esse e-mail ainda não foi confirmado no Supabase." :
+        /invalid path|PGRST125|requested path is invalid/i.test(m) ? "O endereço do Supabase no config.js está errado. Use só https://SEU-PROJETO.supabase.co" :
+        /invalid api key|no api key/i.test(m) ? "A chave do config.js não foi aceita. Copie de novo a Publishable key do Supabase." :
         (m || "Não foi possível entrar.");
     } finally { btn.disabled = false; btn.textContent = "Entrar"; }
   }
